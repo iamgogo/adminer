@@ -1,6 +1,54 @@
-Adminer 4.7.1-dev:
+Adminer 4.7.6-dev:
+Speed up alter table form (regression from 4.4.0)
+Fix clicking on non-input fields in alter table (regression from 4.6.2)
+MySQL: Always set foreign_key_checks in export
+Editor: Fix focusing foreign key search in select
+
+Adminer 4.7.5 (released 2019-11-13):
+Add id="" to cells with failed inline edit (bug #708)
+PostgreSQL: Fix getting default value in PostgreSQL 12 (bug #719)
+PostgreSQL, Oracle: Set schema for EXPLAIN queries in SQL command (bug #706)
+ClickHouse: SQL command
+Swedish translation
+
+Adminer 4.7.4 (released 2019-10-22):
+Fix XSS if Adminer is accessible at URL /data:
+
+Adminer 4.7.3 (released 2019-08-27):
+Allow editing foreign keys pointing to tables in other database/schema (bug #694)
+Fix blocking of concurrent instances in PHP >7.2 (bug #703)
+MySQL: Speed up displaying tables in large databases (bug #700, regression from 4.7.2)
+MySQL: Allow editing rows identified by negative floats (bug #695)
+MySQL: Skip editing generated columns
+SQLite: Quote strings stored in integer columns in export (bug #696)
+SQLite: Handle error in altering table (bug #697)
+SQLite: Allow setting auto increment for empty tables
+SQLite: Preserve auto increment when recreating table
+MS SQL: Support foreign keys to other DB
+MongoDB: Allow setting authSource from environment variable 
+
+Adminer 4.7.2 (released 2019-07-18):
+Do not attempt logging in without password (bug #676)
+Stretch footer over the whole table width (bug #624)
+Allow overwriting tables when copying them
+Fix displaying SQL command after Save and continue edit
+Cache busting for adminer.css
+MySQL: Fix displaying multi-columns foreign keys (bug #675, regression from 4.7.0)
+MySQL: Fix creating users and changing password in MySQL 8 (bug #663)
+MySQL: Pass SRID to GeomFromText
+PostgreSQL: Fix setting column comments on new table
+PostgreSQL: Display definitions of materialized views (bug #682)
+PostgreSQL: Fix table status in PostgreSQL 12 (bug #683)
+MS SQL: Support comments
+Elasticsearch: Fix setting number of rows
+
+Adminer 4.7.1 (released 2019-01-24):
+Display the tables scrollbar (bug #647)
+Remember visible columns in Create Table form (bug #493)
 Add autocomplete attributes to login form
 PHP <5.4 compatibility even with ClickHouse enabled (regression from 4.7.0)
+SQLite: Hide server field in login form
+Editor: Allow disabling boolean fields in PostgreSQL (bug #640)
 
 Adminer 4.7.0 (released 2018-11-24):
 Simplify storing executed SQL queries to bookmarks
@@ -639,7 +687,7 @@ Print ALTER export instead of executing it
 Click on row selects it
 Fix Editor date format
 Fix long SQL query crash (bug #2839231)
-Speedup of simple alter table
+Speed up simple alter table
 Traditional Chinese translation
 
 Adminer 2.0.0 (released 2009-08-06):

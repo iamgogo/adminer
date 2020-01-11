@@ -17,7 +17,8 @@ function bodyLoad(version, maria) {
 						for (var i = 1; i < obj.length; i++) {
 							obj[i] = obj[i]
 								.replace(/\.html/, '/')
-								.replace(/(numeric)(-type-overview)/, (maria ? '$1-data$2' : '$&')) // MariaDB
+								.replace(/(numeric)(-type-overview)/, '$1-data$2')
+								.replace(/#statvar_.*/, '#$$1')
 							;
 						}
 					}
@@ -33,7 +34,7 @@ function bodyLoad(version, maria) {
 			jush.custom_links = jushLinks;
 		}
 		jush.highlight_tag('code', 0);
-		var tags = qsa('textarea', document);
+		var tags = qsa('textarea');
 		for (var i = 0; i < tags.length; i++) {
 			if (/(^|\s)jush-/.test(tags[i].className)) {
 				var pre = jush.textarea(tags[i]);
@@ -71,12 +72,25 @@ function typePassword(el, disable) {
 }
 
 /** Install toggle handler
+* @param [HTMLElement]
 */
-function messagesPrint() {
-	var els = qsa('.toggle', document);
+function messagesPrint(el) {
+	var els = qsa('.toggle', el);
 	for (var i = 0; i < els.length; i++) {
 		els[i].onclick = partial(toggle, els[i].getAttribute('href').substr(1));
 	}
+}
+
+
+
+/** Hide or show some login rows for selected driver	
+* @param HTMLSelectElement	
+*/	
+function loginDriver(driver) {	
+	var trs = parentTag(driver, 'table').rows;	
+	var disabled = /sqlite/.test(selectValue(driver));	
+	alterClass(trs[1], 'hidden', disabled);	// 1 - row with server
+	trs[1].getElementsByTagName('input')[0].disabled = disabled;	
 }
 
 
@@ -193,6 +207,33 @@ function idfEscape(s) {
 
 
 
+/** Set up event handlers for edit_fields().
+*/
+function editFields() {
+	var els = qsa('[name$="[field]"]');
+	for (var i = 0; i < els.length; i++) {
+		els[i].oninput = function () {
+			editingNameChange.call(this);
+			if (!this.defaultValue) {
+				editingAddRow.call(this);
+			}
+		}
+	}
+	els = qsa('[name$="[length]"]');
+	for (var i = 0; i < els.length; i++) {
+		mixin(els[i], {onfocus: editingLengthFocus, oninput: editingLengthChange});
+	}
+	els = qsa('[name$="[type]"]');
+	for (var i = 0; i < els.length; i++) {
+		mixin(els[i], {
+			onfocus: function () { lastType = selectValue(this); },
+			onchange: editingTypeChange,
+			onmouseover: function (event) { helpMouseover.call(this, event, getTarget(event).value, 1) },
+			onmouseout: helpMouseout
+		});
+	}
+}
+
 /** Handle clicks on fields editing
 * @param MouseEvent
 * @return boolean false to cancel action
@@ -200,7 +241,7 @@ function idfEscape(s) {
 function editingClick(event) {
 	var el = getTarget(event);
 	if (!isTag(el, 'input')) {
-		el = parentTag(target, 'label');
+		el = parentTag(el, 'label');
 		el = el && qs('input', el);
 	}
 	if (el) {
@@ -275,7 +316,7 @@ function editingNameChange() {
 }
 
 /** Add table row for next field
-* @param boolean
+* @param [boolean]
 * @return boolean false
 * @this HTMLInputElement
 */
@@ -447,14 +488,6 @@ function columnShow(checked, column) {
 	}
 }
 
-/** Hide column with default values in narrow window
-*/
-function editingHideDefaults() {
-	if (innerWidth < document.documentElement.scrollWidth) {
-		qs('#form')['defaults'].checked = false;
-	}
-}
-
 /** Display partition options
 * @this HTMLSelectElement
 */
@@ -476,14 +509,14 @@ function partitionNameChange() {
 }
 
 /** Show or hide comment fields
+* @param HTMLInputElement
 * @param [boolean] whether to focus Comment if checked
-* @this HTMLInputElement
 */
-function editingCommentsClick(focus) {
-	var comment = this.form['Comment'];
-	columnShow(this.checked, 6);
-	alterClass(comment, 'hidden', !this.checked);
-	if (focus && this.checked) {
+function editingCommentsClick(el, focus) {
+	var comment = el.form['Comment'];
+	columnShow(el.checked, 6);
+	alterClass(comment, 'hidden', !el.checked);
+	if (focus && el.checked) {
 		comment.focus();
 	}
 }

@@ -351,7 +351,7 @@ function set_password($vendor, $server, $username, $password) {
 }
 
 /** Get password from session
-* @return string
+* @return string or null for missing password or false for expired password
 */
 function get_password() {
 	$return = get_session("pwds");
@@ -479,10 +479,10 @@ function where($where, $fields = array()) {
 		$key = bracket_escape($key, 1); // 1 - back
 		$column = escape_key($key);
 		$return[] = $column
-			. ($jush == "sql" && preg_match('~^[0-9]*\.[0-9]*$~', $val) ? " LIKE " . q(addcslashes($val, "%_\\"))
-				: ($jush == "mssql" ? " LIKE " . q(preg_replace('~[_%[]~', '[\0]', $val))
+			. ($jush == "sql" && is_numeric($val) && preg_match('~\.~', $val) ? " LIKE " . q($val) // LIKE because of floats but slow with ints
+				: ($jush == "mssql" ? " LIKE " . q(preg_replace('~[_%[]~', '[\0]', $val)) // LIKE because of text
 				: " = " . unconvert_field($fields[$key], q($val))
-			)) // LIKE because of floats but slow with ints, in MS SQL because of text
+			))
 		; //! enum and set
 		if ($jush == "sql" && preg_match('~char|text~', $fields[$key]["type"]) && preg_match("~[^ -@]~", $val)) { // not just [a-z] to catch non-ASCII characters
 			$return[] = "$column = " . q($val) . " COLLATE " . charset($connection) . "_bin";
@@ -566,8 +566,12 @@ function restart_session() {
 * @return null
 */
 function stop_session($force = false) {
-	if (!ini_bool("session.use_cookies") || ($force && @ini_set("session.use_cookies", false) !== false)) { // @ - may be disabled
+	$use_cookies = ini_bool("session.use_cookies");
+	if (!$use_cookies || $force) {
 		session_write_close(); // improves concurrency if a user opens several pages at once, may be restarted later
+		if ($use_cookies && @ini_set("session.use_cookies", false) === false) { // @ - may be disabled
+			session_start();
+		}
 	}
 }
 
@@ -960,7 +964,7 @@ function input($field, $value, $function) {
 			}
 		} elseif (preg_match('~blob|bytea|raw|file~', $field["type"]) && ini_bool("file_uploads")) {
 			echo "<input type='file' name='fields-$name'>";
-		} elseif (($text = preg_match('~text|lob~', $field["type"])) || preg_match("~\n~", $value)) {
+		} elseif (($text = preg_match('~text|lob|memo~i', $field["type"])) || preg_match("~\n~", $value)) {
 			if ($text && $jush != "sqlite") {
 				$attrs .= " cols='50' rows='12'";
 			} else {

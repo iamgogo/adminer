@@ -238,11 +238,15 @@ if (!defined("DRIVER")) {
 				$options = array(PDO::MYSQL_ATTR_LOCAL_INFILE => false);
 				$ssl = $adminer->connectSsl();
 				if ($ssl) {
-					$options += array(
-						PDO::MYSQL_ATTR_SSL_KEY => $ssl['key'],
-						PDO::MYSQL_ATTR_SSL_CERT => $ssl['cert'],
-						PDO::MYSQL_ATTR_SSL_CA => $ssl['ca'],
-					);
+					if (!empty($ssl['key'])) {
+						$options[PDO::MYSQL_ATTR_SSL_KEY] = $ssl['key'];
+					}
+					if (!empty($ssl['cert'])) {
+						$options[PDO::MYSQL_ATTR_SSL_CERT] = $ssl['cert'];
+					}
+					if (!empty($ssl['ca'])) {
+						$options[PDO::MYSQL_ATTR_SSL_CA] = $ssl['ca'];
+					}
 				}
 				$this->dsn(
 					"mysql:charset=utf8;host=" . str_replace(":", ";unix_socket=", preg_replace('~:(\d)~', ';port=\1', $server)),
@@ -551,6 +555,8 @@ if (!defined("DRIVER")) {
 				"privileges" => array_flip(preg_split('~, *~', $row["Privileges"])),
 				"comment" => $row["Comment"],
 				"primary" => ($row["Key"] == "PRI"),
+				// https://mariadb.com/kb/en/library/show-columns/, https://github.com/vrana/adminer/pull/359#pullrequestreview-276677186
+				"generated" => preg_match('~^(VIRTUAL|PERSISTENT|STORED)~', $row["Extra"]),
 			);
 		}
 		return $return;
@@ -579,7 +585,7 @@ if (!defined("DRIVER")) {
 	*/
 	function foreign_keys($table) {
 		global $connection, $on_actions;
-		static $pattern = '(?:`(?:[^`]|``)+`)|(?:"(?:[^"]|"")+")';
+		static $pattern = '(?:`(?:[^`]|``)+`|"(?:[^"]|"")+")';
 		$return = array();
 		$create_table = $connection->result("SHOW CREATE TABLE " . table($table), 1);
 		if ($create_table) {
@@ -810,7 +816,8 @@ if (!defined("DRIVER")) {
 		queries("SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO'");
 		foreach ($tables as $table) {
 			$name = ($target == DB ? table("copy_$table") : idf_escape($target) . "." . table($table));
-			if (!queries("CREATE TABLE $name LIKE " . table($table))
+			if (($_POST["overwrite"] && !queries("\nDROP TABLE IF EXISTS $name"))
+				|| !queries("CREATE TABLE $name LIKE " . table($table))
 				|| !queries("INSERT INTO $name SELECT * FROM " . table($table))
 			) {
 				return false;
@@ -825,7 +832,8 @@ if (!defined("DRIVER")) {
 		foreach ($views as $table) {
 			$name = ($target == DB ? table("copy_$table") : idf_escape($target) . "." . table($table));
 			$view = view($table);
-			if (!queries("CREATE VIEW $name AS $view[select]")) { //! USE to avoid db.table
+			if (($_POST["overwrite"] && !queries("DROP VIEW IF EXISTS $name"))
+				|| !queries("CREATE VIEW $name AS $view[select]")) { //! USE to avoid db.table
 				return false;
 			}
 		}
@@ -883,9 +891,8 @@ if (!defined("DRIVER")) {
 		$fields = array();
 		preg_match_all("~$pattern\\s*,?~is", $match[1], $matches, PREG_SET_ORDER);
 		foreach ($matches as $param) {
-			$name = str_replace("``", "`", $param[2]) . $param[3];
 			$fields[] = array(
-				"field" => $name,
+				"field" => str_replace("``", "`", $param[2]) . $param[3],
 				"type" => strtolower($param[5]),
 				"length" => preg_replace_callback("~$enum_length~s", 'normalize_enum', $param[6]),
 				"unsigned" => strtolower(preg_replace('~\s+~', ' ', trim("$param[8] $param[7]"))),
@@ -978,9 +985,10 @@ if (!defined("DRIVER")) {
 
 	/** Set current schema
 	* @param string
+	* @param Min_DB
 	* @return bool
 	*/
-	function set_schema($schema) {
+	function set_schema($schema, $connection2 = null) {
 		return true;
 	}
 
@@ -1077,7 +1085,7 @@ if (!defined("DRIVER")) {
 			$return = "CONV($return, 2, 10) + 0";
 		}
 		if (preg_match("~geometry|point|linestring|polygon~", $field["type"])) {
-			$return = (min_version(8) ? "ST_" : "") . "GeomFromText($return)";
+			$return = (min_version(8) ? "ST_" : "") . "GeomFromText($return, SRID($field[field]))";
 		}
 		return $return;
 	}

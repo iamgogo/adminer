@@ -482,6 +482,7 @@ if (isset($_GET["sqlite"]) || isset($_GET["sqlite2"])) {
 	}
 
 	function alter_table($table, $name, $fields, $foreign, $comment, $engine, $collation, $auto_increment, $partitioning) {
+		global $connection;
 		$use_all_fields = ($table == "" || $foreign);
 		foreach ($fields as $field) {
 			if ($field[0] != "" || !$field[1] || $field[2]) {
@@ -508,16 +509,22 @@ if (isset($_GET["sqlite"]) || isset($_GET["sqlite2"])) {
 			if ($table != $name && !queries("ALTER TABLE " . table($table) . " RENAME TO " . table($name))) {
 				return false;
 			}
-		} elseif (!recreate_table($table, $name, $alter, $originals, $foreign)) {
+		} elseif (!recreate_table($table, $name, $alter, $originals, $foreign, $auto_increment)) {
 			return false;
 		}
 		if ($auto_increment) {
+			queries("BEGIN");
 			queries("UPDATE sqlite_sequence SET seq = $auto_increment WHERE name = " . q($name)); // ignores error
+			if (!$connection->affected_rows) {
+				queries("INSERT INTO sqlite_sequence (name, seq) VALUES (" . q($name) . ", $auto_increment)");
+			}
+			queries("COMMIT");
 		}
 		return true;
 	}
 
-	function recreate_table($table, $name, $fields, $originals, $foreign, $indexes = array()) {
+	function recreate_table($table, $name, $fields, $originals, $foreign, $auto_increment, $indexes = array()) {
+		global $connection;
 		if ($table != "") {
 			if (!$fields) {
 				foreach (fields($table) as $key => $field) {
@@ -578,12 +585,13 @@ if (isset($_GET["sqlite"]) || isset($_GET["sqlite2"])) {
 			$fields[$key] = "  " . implode($field);
 		}
 		$fields = array_merge($fields, array_filter($foreign));
-		if (!queries("CREATE TABLE " . table($table != "" ? "adminer_$name" : $name) . " (\n" . implode(",\n", $fields) . "\n)")) {
+		$temp_name = ($table == $name ? "adminer_$name" : $name);
+		if (!queries("CREATE TABLE " . table($temp_name) . " (\n" . implode(",\n", $fields) . "\n)")) {
 			// implicit ROLLBACK to not overwrite $connection->error
 			return false;
 		}
 		if ($table != "") {
-			if ($originals && !queries("INSERT INTO " . table("adminer_$name") . " (" . implode(", ", $originals) . ") SELECT " . implode(", ", array_map('idf_escape', array_keys($originals))) . " FROM " . table($table))) {
+			if ($originals && !queries("INSERT INTO " . table($temp_name) . " (" . implode(", ", $originals) . ") SELECT " . implode(", ", array_map('idf_escape', array_keys($originals))) . " FROM " . table($table))) {
 				return false;
 			}
 			$triggers = array();
@@ -591,12 +599,15 @@ if (isset($_GET["sqlite"]) || isset($_GET["sqlite2"])) {
 				$trigger = trigger($trigger_name);
 				$triggers[] = "CREATE TRIGGER " . idf_escape($trigger_name) . " " . implode(" ", $timing_event) . " ON " . table($name) . "\n$trigger[Statement]";
 			}
-			if (!queries("DROP TABLE " . table($table))) { // drop before creating indexes and triggers to allow using old names
+			$auto_increment = $auto_increment ? 0 : $connection->result("SELECT seq FROM sqlite_sequence WHERE name = " . q($table)); // if $auto_increment is set then it will be updated later
+			if (!queries("DROP TABLE " . table($table)) // drop before creating indexes and triggers to allow using old names
+				|| ($table == $name && !queries("ALTER TABLE " . table($temp_name) . " RENAME TO " . table($name)))
+				|| !alter_indexes($name, $indexes)
+			) {
 				return false;
 			}
-			queries("ALTER TABLE " . table("adminer_$name") . " RENAME TO " . table($name));
-			if (!alter_indexes($name, $indexes)) {
-				return false;
+			if ($auto_increment) {
+				queries("UPDATE sqlite_sequence SET seq = $auto_increment WHERE name = " . q($name)); // ignores error
 			}
 			foreach ($triggers as $trigger) {
 				if (!queries($trigger)) {
@@ -619,7 +630,7 @@ if (isset($_GET["sqlite"]) || isset($_GET["sqlite2"])) {
 	function alter_indexes($table, $alter) {
 		foreach ($alter as $primary) {
 			if ($primary[0] == "PRIMARY") {
-				return recreate_table($table, $table, array(), array(), array(), $alter);
+				return recreate_table($table, $table, array(), array(), array(), 0, $alter);
 			}
 		}
 		foreach (array_reverse($alter) as $val) {
@@ -675,7 +686,7 @@ if (isset($_GET["sqlite"]) || isset($_GET["sqlite2"])) {
 		$return = array();
 		$trigger_options = trigger_options();
 		foreach (get_rows("SELECT * FROM sqlite_master WHERE type = 'trigger' AND tbl_name = " . q($table)) as $row) {
-			preg_match('~^CREATE\s+TRIGGER\s*(?:[^`"\s]+|`[^`]*`|"[^"]*")+\s*(' . implode("|", $trigger_options["Timing"]) . ')\s*(.*)\s+ON\b~iU', $row["sql"], $match);
+			preg_match('~^CREATE\s+TRIGGER\s*(?:[^`"\s]+|`[^`]*`|"[^"]*")+\s*(' . implode("|", $trigger_options["Timing"]) . ')\s*(.*?)\s+ON\b~i', $row["sql"], $match);
 			$return[$row["name"]] = array($match[1], $match[2]);
 		}
 		return $return;
